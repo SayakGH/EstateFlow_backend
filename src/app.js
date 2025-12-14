@@ -4,7 +4,6 @@ const authRoutes = require("./routes/authRoutes");
 const userRoutes = require("./routes/userRoutes");
 
 const app = express();
-
 // CORS FIX
 app.use(
   cors({
