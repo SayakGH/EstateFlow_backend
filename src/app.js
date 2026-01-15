@@ -21,8 +21,5 @@ app.use(express.json());
 // Routes
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/users", userRoutes);
-app.use("/api/v1/invoices", invoiceRoutes);
-app.use("/api/v1/analytics", analyticsRoutes);
-app.use("/api/v1/payments", paymentRoutes);
 
 module.exports = app;
