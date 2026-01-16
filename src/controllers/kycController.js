@@ -224,3 +224,43 @@ exports.deleteKycCustomerController = async (req, res) => {
     });
   }
 };
+/**
+ * Fetch all APPROVED KYC customers
+ */
+exports.getApprovedKycCustomers = async (req, res) => {
+  try {
+    const customers = await kycRepo.getApprovedKycCustomers();
+
+    res.json({
+      success: true,
+      count: customers.length,
+      customers,
+    });
+  } catch (err) {
+    console.error("Fetch Approved KYC Error:", err);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch approved KYC customers",
+    });
+  }
+};
+/**
+ * Fetch all PENDING KYC customers
+ */
+exports.getPendingKycCustomers = async (req, res) => {
+  try {
+    const customers = await kycRepo.getPendingKycCustomers();
+
+    res.json({
+      success: true,
+      count: customers.length,
+      customers,
+    });
+  } catch (err) {
+    console.error("Fetch Pending KYC Error:", err);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch pending KYC customers",
+    });
+  }
+};

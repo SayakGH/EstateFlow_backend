@@ -159,3 +159,42 @@ exports.deleteKycCustomer = async (customerId) => {
 
   return customer;
 };
+/**
+ * 📄 Get all APPROVED KYC customers
+ */
+exports.getApprovedKycCustomers = async () => {
+  const result = await dynamoDB.send(
+    new ScanCommand({
+      TableName: TABLE_NAME,
+      FilterExpression: "#status = :status",
+      ExpressionAttributeNames: {
+        "#status": "status",
+      },
+      ExpressionAttributeValues: {
+        ":status": "approved",
+      },
+    })
+  );
+
+  return result.Items || [];
+};
+
+/**
+ * ⏳ Get all PENDING KYC customers
+ */
+exports.getPendingKycCustomers = async () => {
+  const result = await dynamoDB.send(
+    new ScanCommand({
+      TableName: TABLE_NAME,
+      FilterExpression: "#status = :status",
+      ExpressionAttributeNames: {
+        "#status": "status",
+      },
+      ExpressionAttributeValues: {
+        ":status": "pending",
+      },
+    })
+  );
+
+  return result.Items || [];
+};
