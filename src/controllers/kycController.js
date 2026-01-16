@@ -5,14 +5,15 @@ const { s3 } = require("../config/s3bucket");
 const kycRepo = require("../repository/kyc.repo");
 
 const BUCKET = "realestate-kyc-documents";
-
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/jpg"];
 
+/**
+ * Generate Presigned URLs
+ */
 exports.generatePresignedUrls = async (req, res) => {
   try {
     const { aadhaarType, panType, voterType, otherType } = req.body;
 
-    // Validate mandatory docs
     if (
       !ALLOWED_TYPES.includes(aadhaarType) ||
       !ALLOWED_TYPES.includes(panType)
@@ -22,10 +23,10 @@ exports.generatePresignedUrls = async (req, res) => {
         .json({ message: "Invalid Aadhaar or PAN file type" });
     }
 
-    // Validate optional docs
     if (voterType && !ALLOWED_TYPES.includes(voterType)) {
       return res.status(400).json({ message: "Invalid Voter ID file type" });
     }
+
     if (otherType && !ALLOWED_TYPES.includes(otherType)) {
       return res.status(400).json({ message: "Invalid Other ID file type" });
     }
@@ -40,7 +41,7 @@ exports.generatePresignedUrls = async (req, res) => {
         ContentType: contentType,
       });
 
-      return await getSignedUrl(s3, command, { expiresIn: 300 });
+      return getSignedUrl(s3, command, { expiresIn: 300 });
     };
 
     res.json({
@@ -72,11 +73,15 @@ exports.generatePresignedUrls = async (req, res) => {
   }
 };
 
+/**
+ * Save KYC
+ */
 exports.saveKyc = async (req, res) => {
   try {
     const {
       customerId,
       name,
+      normalized_name,
       phone,
       address,
       aadhaar,
@@ -89,13 +94,36 @@ exports.saveKyc = async (req, res) => {
       otherKey,
     } = req.body;
 
+    if (!name || !normalized_name || !phone) {
+      return res.status(400).json({
+        message: "Name, normalized_name and phone are required",
+      });
+    }
+
     if (!aadhaar || !pan || !aadhaarKey || !panKey) {
-      return res.status(400).json({ message: "Aadhaar and PAN are mandatory" });
+      return res.status(400).json({
+        message: "Aadhaar and PAN are mandatory",
+      });
+    }
+
+    // 🔐 DUPLICATE CHECK (phone + normalized_name)
+    const isDuplicate = await kycRepo.checkDuplicateCustomer({
+      phone,
+      normalized_name,
+    });
+
+    if (isDuplicate) {
+      return res.status(409).json({
+        success: false,
+        message:
+          "Customer already exists with the same phone number and name",
+      });
     }
 
     await kycRepo.createKyc({
       customerId,
       name,
+      normalized_name,
       phone,
       address,
       aadhaar,
@@ -108,13 +136,19 @@ exports.saveKyc = async (req, res) => {
       otherKey,
     });
 
-    res.json({ success: true, message: "KYC submitted successfully" });
+    res.json({
+      success: true,
+      message: "KYC submitted successfully",
+    });
   } catch (err) {
     console.error("KYC Save Error:", err);
     res.status(500).json({ message: "Failed to save KYC data" });
   }
 };
 
+/**
+ * Fetch All KYC Customers
+ */
 exports.getAllKycCustomers = async (req, res) => {
   try {
     const customers = await kycRepo.getAllKycCustomers();
@@ -130,19 +164,14 @@ exports.getAllKycCustomers = async (req, res) => {
   }
 };
 
+/**
+ * Approve KYC
+ */
 exports.approveKyc = async (req, res) => {
   try {
     const { customerId } = req.params;
 
-    if (!customerId) {
-      return res.status(400).json({
-        success: false,
-        message: "customerId is required",
-      });
-    }
-
     const existing = await kycRepo.getKycById(customerId);
-
     if (!existing) {
       return res.status(404).json({
         success: false,
@@ -166,16 +195,12 @@ exports.approveKyc = async (req, res) => {
   }
 };
 
+/**
+ * Delete KYC Customer
+ */
 exports.deleteKycCustomerController = async (req, res) => {
   try {
     const { customerId } = req.params;
-
-    if (!customerId) {
-      return res.status(400).json({
-        success: false,
-        message: "Customer ID is required",
-      });
-    }
 
     const deletedCustomer = await kycRepo.deleteKycCustomer(customerId);
 
@@ -186,15 +211,14 @@ exports.deleteKycCustomerController = async (req, res) => {
       });
     }
 
-    return res.status(200).json({
+    res.status(200).json({
       success: true,
       message: "Customer deleted successfully",
       customer: deletedCustomer,
     });
   } catch (error) {
     console.error("Delete KYC error:", error);
-
-    return res.status(500).json({
+    res.status(500).json({
       success: false,
       message: "Failed to delete customer",
     });
