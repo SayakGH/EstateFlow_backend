@@ -78,15 +78,78 @@ exports.createKyc = async ({
   return item;
 };
 
-exports.getAllKycCustomers = async () => {
-  const result = await dynamoDB.send(
-    new ScanCommand({
-      TableName: TABLE_NAME,
-    })
-  );
+/* ================= PAGINATION CORE ================= */
 
-  return result.Items || [];
+/**
+ * Internal helper for offset-like pagination using DynamoDB Scan
+ */
+const paginatedScan = async ({
+  filterExpression,
+  expressionAttributeNames,
+  expressionAttributeValues,
+  page,
+  limit,
+}) => {
+  const offset = (page - 1) * limit;
+  let items = [];
+  let scanned = 0;
+  let lastKey = undefined;
+
+  while (items.length < limit) {
+    const res = await dynamoDB.send(
+      new ScanCommand({
+        TableName: TABLE_NAME,
+        FilterExpression: filterExpression,
+        ExpressionAttributeNames: expressionAttributeNames,
+        ExpressionAttributeValues: expressionAttributeValues,
+        ExclusiveStartKey: lastKey,
+      })
+    );
+
+    for (const item of res.Items || []) {
+      if (scanned >= offset && items.length < limit) {
+        items.push(item);
+      }
+      scanned++;
+    }
+
+    if (!res.LastEvaluatedKey) break;
+    lastKey = res.LastEvaluatedKey;
+  }
+
+  return items;
 };
+
+/* ================= FETCH WITH PAGINATION ================= */
+
+exports.getAllKycCustomers = async (page, limit) => {
+  return paginatedScan({
+    page,
+    limit,
+  });
+};
+
+exports.getApprovedKycCustomers = async (page, limit) => {
+  return paginatedScan({
+    filterExpression: "#status = :status",
+    expressionAttributeNames: { "#status": "status" },
+    expressionAttributeValues: { ":status": "approved" },
+    page,
+    limit,
+  });
+};
+
+exports.getPendingKycCustomers = async (page, limit) => {
+  return paginatedScan({
+    filterExpression: "#status = :status",
+    expressionAttributeNames: { "#status": "status" },
+    expressionAttributeValues: { ":status": "pending" },
+    page,
+    limit,
+  });
+};
+
+/* ================= OTHER OPS ================= */
 
 exports.getKycById = async (customerId) => {
   const res = await dynamoDB.send(
@@ -158,43 +221,4 @@ exports.deleteKycCustomer = async (customerId) => {
   );
 
   return customer;
-};
-/**
- * 📄 Get all APPROVED KYC customers
- */
-exports.getApprovedKycCustomers = async () => {
-  const result = await dynamoDB.send(
-    new ScanCommand({
-      TableName: TABLE_NAME,
-      FilterExpression: "#status = :status",
-      ExpressionAttributeNames: {
-        "#status": "status",
-      },
-      ExpressionAttributeValues: {
-        ":status": "approved",
-      },
-    })
-  );
-
-  return result.Items || [];
-};
-
-/**
- * ⏳ Get all PENDING KYC customers
- */
-exports.getPendingKycCustomers = async () => {
-  const result = await dynamoDB.send(
-    new ScanCommand({
-      TableName: TABLE_NAME,
-      FilterExpression: "#status = :status",
-      ExpressionAttributeNames: {
-        "#status": "status",
-      },
-      ExpressionAttributeValues: {
-        ":status": "pending",
-      },
-    })
-  );
-
-  return result.Items || [];
 };

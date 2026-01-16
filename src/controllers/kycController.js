@@ -7,9 +7,22 @@ const kycRepo = require("../repository/kyc.repo");
 const BUCKET = "realestate-kyc-documents";
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/jpg"];
 
+/* ===================== HELPERS ===================== */
+
 /**
- * Generate Presigned URLs
+ * Parse pagination params from query
+ * Defaults:
+ * page = 1
+ * limit = 10 (max 50)
  */
+const parsePagination = (req) => {
+  const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+  const limit = Math.min(parseInt(req.query.limit, 10) || 10, 50);
+  return { page, limit };
+};
+
+/* ===================== PRESIGN ===================== */
+
 exports.generatePresignedUrls = async (req, res) => {
   try {
     const { aadhaarType, panType, voterType, otherType } = req.body;
@@ -73,9 +86,8 @@ exports.generatePresignedUrls = async (req, res) => {
   }
 };
 
-/**
- * Save KYC
- */
+/* ===================== SAVE KYC ===================== */
+
 exports.saveKyc = async (req, res) => {
   try {
     const {
@@ -106,7 +118,6 @@ exports.saveKyc = async (req, res) => {
       });
     }
 
-    // 🔐 DUPLICATE CHECK (phone + normalized_name)
     const isDuplicate = await kycRepo.checkDuplicateCustomer({
       phone,
       normalized_name,
@@ -146,16 +157,20 @@ exports.saveKyc = async (req, res) => {
   }
 };
 
+/* ===================== FETCH (PAGINATED) ===================== */
+
 /**
- * Fetch All KYC Customers
+ * Fetch ALL KYCs (paginated)
  */
 exports.getAllKycCustomers = async (req, res) => {
   try {
-    const customers = await kycRepo.getAllKycCustomers();
+    const { page, limit } = parsePagination(req);
+    const customers = await kycRepo.getAllKycCustomers(page, limit);
 
     res.json({
       success: true,
-      count: customers.length,
+      page,
+      limit,
       customers,
     });
   } catch (err) {
@@ -165,8 +180,53 @@ exports.getAllKycCustomers = async (req, res) => {
 };
 
 /**
- * Approve KYC
+ * Fetch APPROVED KYCs (paginated)
  */
+exports.getApprovedKycCustomers = async (req, res) => {
+  try {
+    const { page, limit } = parsePagination(req);
+    const customers = await kycRepo.getApprovedKycCustomers(page, limit);
+
+    res.json({
+      success: true,
+      page,
+      limit,
+      customers,
+    });
+  } catch (err) {
+    console.error("Fetch Approved KYC Error:", err);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch approved KYC customers",
+    });
+  }
+};
+
+/**
+ * Fetch PENDING KYCs (paginated)
+ */
+exports.getPendingKycCustomers = async (req, res) => {
+  try {
+    const { page, limit } = parsePagination(req);
+    const customers = await kycRepo.getPendingKycCustomers(page, limit);
+
+    res.json({
+      success: true,
+      page,
+      limit,
+      customers,
+    });
+  } catch (err) {
+    console.error("Fetch Pending KYC Error:", err);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch pending KYC customers",
+    });
+  }
+};
+
+/* ===================== APPROVE ===================== */
+
 exports.approveKyc = async (req, res) => {
   try {
     const { customerId } = req.params;
@@ -195,9 +255,8 @@ exports.approveKyc = async (req, res) => {
   }
 };
 
-/**
- * Delete KYC Customer
- */
+/* ===================== DELETE ===================== */
+
 exports.deleteKycCustomerController = async (req, res) => {
   try {
     const { customerId } = req.params;
@@ -221,46 +280,6 @@ exports.deleteKycCustomerController = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Failed to delete customer",
-    });
-  }
-};
-/**
- * Fetch all APPROVED KYC customers
- */
-exports.getApprovedKycCustomers = async (req, res) => {
-  try {
-    const customers = await kycRepo.getApprovedKycCustomers();
-
-    res.json({
-      success: true,
-      count: customers.length,
-      customers,
-    });
-  } catch (err) {
-    console.error("Fetch Approved KYC Error:", err);
-    res.status(500).json({
-      success: false,
-      message: "Failed to fetch approved KYC customers",
-    });
-  }
-};
-/**
- * Fetch all PENDING KYC customers
- */
-exports.getPendingKycCustomers = async (req, res) => {
-  try {
-    const customers = await kycRepo.getPendingKycCustomers();
-
-    res.json({
-      success: true,
-      count: customers.length,
-      customers,
-    });
-  } catch (err) {
-    console.error("Fetch Pending KYC Error:", err);
-    res.status(500).json({
-      success: false,
-      message: "Failed to fetch pending KYC customers",
     });
   }
 };
