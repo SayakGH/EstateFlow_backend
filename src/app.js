@@ -2,9 +2,7 @@ const express = require("express");
 const cors = require("cors");
 const authRoutes = require("./routes/authRoutes");
 const userRoutes = require("./routes/userRoutes");
-const invoiceRoutes = require("./routes/invoiceRoutes");
-const analyticsRoutes = require("./routes/analyticsRoute");
-const paymentRoutes = require("./routes/paymentRoute");
+const kycRoutes = require("./routes/kycRoutes");
 
 const app = express();
 // CORS FIX
@@ -21,5 +19,6 @@ app.use(express.json());
 // Routes
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/users", userRoutes);
+app.use("/api/v1/customer-kyc", kycRoutes);
 
 module.exports = app;
