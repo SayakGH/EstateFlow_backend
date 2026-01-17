@@ -7,18 +7,27 @@ const kycRepo = require("../repository/kyc.repo");
 const BUCKET = "realestate-kyc-documents";
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/jpg"];
 
+// 🔒 Backend-controlled pagination
+const LIMIT = 2;
+
 /* ===================== HELPERS ===================== */
 
 /**
- * Parse pagination params from query
+ * Parse page param from query
  * Defaults:
  * page = 1
- * limit = 10 (max 50)
  */
-const parsePagination = (req) => {
-  const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
-  const limit = Math.min(parseInt(req.query.limit, 10) || 10, 50);
-  return { page, limit };
+const parsePage = (req) => {
+  return Math.max(parseInt(req.query.page, 10) || 1, 1);
+};
+
+/**
+ * Normalize search query (optional)
+ */
+const parseSearch = (req) => {
+  return req.query.search
+    ? req.query.search.toLowerCase().replace(/\s+/g, "")
+    : null;
 };
 
 /* ===================== PRESIGN ===================== */
@@ -120,7 +129,6 @@ exports.saveKyc = async (req, res) => {
 
     const isDuplicate = await kycRepo.checkDuplicateCustomer({
       phone,
-      normalized_name,
     });
 
     if (isDuplicate) {
@@ -157,21 +165,24 @@ exports.saveKyc = async (req, res) => {
   }
 };
 
-/* ===================== FETCH (PAGINATED) ===================== */
+/* ===================== FETCH (PAGINATED + SEARCH) ===================== */
 
-/**
- * Fetch ALL KYCs (paginated)
- */
 exports.getAllKycCustomers = async (req, res) => {
   try {
-    const { page, limit } = parsePagination(req);
-    const customers = await kycRepo.getAllKycCustomers(page, limit);
+    const page = parsePage(req);
+    const search = parseSearch(req);
+
+    const { items, totalCount } =
+      await kycRepo.getAllKycCustomers(page, search);
+
+    const totalPages = Math.ceil(totalCount / LIMIT);
 
     res.json({
       success: true,
       page,
-      limit,
-      customers,
+      limit: LIMIT,
+      totalPages,
+      customers: items,
     });
   } catch (err) {
     console.error("Fetch KYC Error:", err);
@@ -179,19 +190,22 @@ exports.getAllKycCustomers = async (req, res) => {
   }
 };
 
-/**
- * Fetch APPROVED KYCs (paginated)
- */
 exports.getApprovedKycCustomers = async (req, res) => {
   try {
-    const { page, limit } = parsePagination(req);
-    const customers = await kycRepo.getApprovedKycCustomers(page, limit);
+    const page = parsePage(req);
+    const search = parseSearch(req);
+
+    const { items, totalCount } =
+      await kycRepo.getApprovedKycCustomers(page, search);
+
+    const totalPages = Math.ceil(totalCount / LIMIT);
 
     res.json({
       success: true,
       page,
-      limit,
-      customers,
+      limit: LIMIT,
+      totalPages,
+      customers: items,
     });
   } catch (err) {
     console.error("Fetch Approved KYC Error:", err);
@@ -202,19 +216,22 @@ exports.getApprovedKycCustomers = async (req, res) => {
   }
 };
 
-/**
- * Fetch PENDING KYCs (paginated)
- */
 exports.getPendingKycCustomers = async (req, res) => {
   try {
-    const { page, limit } = parsePagination(req);
-    const customers = await kycRepo.getPendingKycCustomers(page, limit);
+    const page = parsePage(req);
+    const search = parseSearch(req);
+
+    const { items, totalCount } =
+      await kycRepo.getPendingKycCustomers(page, search);
+
+    const totalPages = Math.ceil(totalCount / LIMIT);
 
     res.json({
       success: true,
       page,
-      limit,
-      customers,
+      limit: LIMIT,
+      totalPages,
+      customers: items,
     });
   } catch (err) {
     console.error("Fetch Pending KYC Error:", err);

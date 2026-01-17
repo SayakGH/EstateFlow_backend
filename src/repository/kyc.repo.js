@@ -11,20 +11,20 @@ const { DeleteObjectsCommand } = require("@aws-sdk/client-s3");
 
 const TABLE_NAME = "kyc_customers";
 const BUCKET_NAME = "realestate-kyc-documents";
+const LIMIT = 2;
 
 /**
  * 🔍 Check duplicate customer
  * Block ONLY if both phone AND normalized_name match
  */
-exports.checkDuplicateCustomer = async ({ phone, normalized_name }) => {
+exports.checkDuplicateCustomer = async ({ phone }) => {
   const result = await dynamoDB.send(
     new ScanCommand({
       TableName: TABLE_NAME,
       FilterExpression:
-        "phone = :phone AND normalized_name = :normalized_name",
+        "phone = :phone",
       ExpressionAttributeValues: {
         ":phone": phone,
-        ":normalized_name": normalized_name,
       },
     })
   );
@@ -35,35 +35,21 @@ exports.checkDuplicateCustomer = async ({ phone, normalized_name }) => {
 /**
  * ➕ Create KYC
  */
-exports.createKyc = async ({
-  customerId,
-  name,
-  normalized_name,
-  phone,
-  address,
-  aadhaar,
-  pan,
-  voter,
-  other,
-  aadhaarKey,
-  panKey,
-  voterKey,
-  otherKey,
-}) => {
+exports.createKyc = async (payload) => {
   const item = {
-    _id: customerId,
-    name,
-    normalized_name,
-    phone,
-    address,
-    aadhaar,
-    pan,
-    voter_id: voter || "",
-    other_id: other || "",
-    aadhaar_key: aadhaarKey,
-    pan_key: panKey,
-    voter_key: voterKey || "",
-    other_key: otherKey || "",
+    _id: payload.customerId,
+    name: payload.name,
+    normalized_name: payload.normalized_name,
+    phone: payload.phone,
+    address: payload.address,
+    aadhaar: payload.aadhaar,
+    pan: payload.pan,
+    voter_id: payload.voter || "",
+    other_id: payload.other || "",
+    aadhaar_key: payload.aadhaarKey,
+    pan_key: payload.panKey,
+    voter_key: payload.voterKey || "",
+    other_key: payload.otherKey || "",
     status: "pending",
     createdAt: new Date().toISOString(),
   };
@@ -78,78 +64,95 @@ exports.createKyc = async ({
   return item;
 };
 
-/* ================= PAGINATION CORE ================= */
+/* ================= PAGINATION + SEARCH CORE ================= */
 
 /**
- * Internal helper for offset-like pagination using DynamoDB Scan
+ * Offset-like pagination using DynamoDB Scan
+ * Supports optional search on normalized_name
+ * Returns items + totalCount
  */
 const paginatedScan = async ({
   filterExpression,
-  expressionAttributeNames,
-  expressionAttributeValues,
+  expressionAttributeNames = {},
+  expressionAttributeValues = {},
   page,
-  limit,
+  search,
 }) => {
-  const offset = (page - 1) * limit;
+  const offset = (page - 1) * LIMIT;
+
   let items = [];
   let scanned = 0;
-  let lastKey = undefined;
+  let totalCount = 0;
+  let lastKey;
 
-  while (items.length < limit) {
+  // 🔍 Add search condition if provided
+  let finalFilterExpression = filterExpression;
+  let finalNames = { ...expressionAttributeNames };
+  let finalValues = { ...expressionAttributeValues };
+
+  if (search) {
+    finalFilterExpression = finalFilterExpression
+      ? `${finalFilterExpression} AND contains(#normalized_name, :search)`
+      : "contains(#normalized_name, :search)";
+
+    finalNames["#normalized_name"] = "normalized_name";
+    finalValues[":search"] = search;
+  }
+
+  do {
     const res = await dynamoDB.send(
       new ScanCommand({
         TableName: TABLE_NAME,
-        FilterExpression: filterExpression,
-        ExpressionAttributeNames: expressionAttributeNames,
-        ExpressionAttributeValues: expressionAttributeValues,
+        FilterExpression: finalFilterExpression,
+        ExpressionAttributeNames:
+          Object.keys(finalNames).length ? finalNames : undefined,
+        ExpressionAttributeValues:
+          Object.keys(finalValues).length ? finalValues : undefined,
         ExclusiveStartKey: lastKey,
       })
     );
 
     for (const item of res.Items || []) {
-      if (scanned >= offset && items.length < limit) {
+      if (scanned >= offset && items.length < LIMIT) {
         items.push(item);
       }
       scanned++;
+      totalCount++;
     }
 
-    if (!res.LastEvaluatedKey) break;
     lastKey = res.LastEvaluatedKey;
-  }
+  } while (lastKey);
 
-  return items;
+  return { items, totalCount };
 };
 
 /* ================= FETCH WITH PAGINATION ================= */
 
-exports.getAllKycCustomers = async (page, limit) => {
-  return paginatedScan({
-    page,
-    limit,
-  });
+exports.getAllKycCustomers = async (page, search) => {
+  return paginatedScan({ page, search });
 };
 
-exports.getApprovedKycCustomers = async (page, limit) => {
+exports.getApprovedKycCustomers = async (page, search) => {
   return paginatedScan({
     filterExpression: "#status = :status",
     expressionAttributeNames: { "#status": "status" },
     expressionAttributeValues: { ":status": "approved" },
     page,
-    limit,
+    search,
   });
 };
 
-exports.getPendingKycCustomers = async (page, limit) => {
+exports.getPendingKycCustomers = async (page, search) => {
   return paginatedScan({
     filterExpression: "#status = :status",
     expressionAttributeNames: { "#status": "status" },
     expressionAttributeValues: { ":status": "pending" },
     page,
-    limit,
+    search,
   });
 };
 
-/* ================= OTHER OPS ================= */
+/* ================= OTHER OPS (UNCHANGED) ================= */
 
 exports.getKycById = async (customerId) => {
   const res = await dynamoDB.send(
@@ -168,12 +171,8 @@ exports.approveKycCustomer = async (customerId) => {
       TableName: TABLE_NAME,
       Key: { _id: customerId },
       UpdateExpression: "SET #status = :status",
-      ExpressionAttributeNames: {
-        "#status": "status",
-      },
-      ExpressionAttributeValues: {
-        ":status": "approved",
-      },
+      ExpressionAttributeNames: { "#status": "status" },
+      ExpressionAttributeValues: { ":status": "approved" },
       ReturnValues: "ALL_NEW",
     })
   );
@@ -205,10 +204,7 @@ exports.deleteKycCustomer = async (customerId) => {
     await s3.send(
       new DeleteObjectsCommand({
         Bucket: BUCKET_NAME,
-        Delete: {
-          Objects: s3Keys,
-          Quiet: true,
-        },
+        Delete: { Objects: s3Keys, Quiet: true },
       })
     );
   }
