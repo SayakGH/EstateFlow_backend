@@ -6,28 +6,28 @@ const kycRepo = require("../repository/kyc.repo");
 
 const BUCKET = "realestate-kyc-documents";
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/jpg"];
-
-// 🔒 Backend-controlled pagination
 const LIMIT = 2;
 
 /* ===================== HELPERS ===================== */
 
-/**
- * Parse page param from query
- * Defaults:
- * page = 1
- */
-const parsePage = (req) => {
-  return Math.max(parseInt(req.query.page, 10) || 1, 1);
-};
+const parsePage = (req) =>
+  Math.max(parseInt(req.query.page, 10) || 1, 1);
 
 /**
- * Normalize search query (optional)
+ * Normalize search input based on intent
+ * - PAN  -> UPPERCASE (exact)
+ * - Name -> lowercase (partial)
  */
-const parseSearch = (req) => {
-  return req.query.search
-    ? req.query.search.toLowerCase().replace(/\s+/g, "")
-    : null;
+const normalizeSearch = (value) => {
+  const trimmed = value.replace(/\s+/g, "");
+
+  // PAN format: ABCDE1234F
+  if (/^[A-Za-z]{5}[0-9]{4}[A-Za-z]$/.test(trimmed)) {
+    return trimmed.toUpperCase();
+  }
+
+  // Default → name search
+  return trimmed.toLowerCase();
 };
 
 /* ===================== PRESIGN ===================== */
@@ -40,9 +40,9 @@ exports.generatePresignedUrls = async (req, res) => {
       !ALLOWED_TYPES.includes(aadhaarType) ||
       !ALLOWED_TYPES.includes(panType)
     ) {
-      return res
-        .status(400)
-        .json({ message: "Invalid Aadhaar or PAN file type" });
+      return res.status(400).json({
+        message: "Invalid Aadhaar or PAN file type",
+      });
     }
 
     if (voterType && !ALLOWED_TYPES.includes(voterType)) {
@@ -62,7 +62,6 @@ exports.generatePresignedUrls = async (req, res) => {
         Key: key,
         ContentType: contentType,
       });
-
       return getSignedUrl(s3, command, { expiresIn: 300 });
     };
 
@@ -103,10 +102,13 @@ exports.saveKyc = async (req, res) => {
       customerId,
       name,
       normalized_name,
+
       phone,
       address,
       aadhaar,
       pan,
+      normalized_pan,
+
       voter,
       other,
       aadhaarKey,
@@ -127,15 +129,17 @@ exports.saveKyc = async (req, res) => {
       });
     }
 
-    const isDuplicate = await kycRepo.checkDuplicateCustomer({
-      phone,
-    });
+    if (!normalized_pan) {
+      return res.status(400).json({
+        message: "normalized_pan is required",
+      });
+    }
 
+    const isDuplicate = await kycRepo.checkDuplicateCustomer({ phone });
     if (isDuplicate) {
       return res.status(409).json({
         success: false,
-        message:
-          "Customer already exists with the same phone number and name",
+        message: "Customer already exists with the same phone number",
       });
     }
 
@@ -143,10 +147,13 @@ exports.saveKyc = async (req, res) => {
       customerId,
       name,
       normalized_name,
+
       phone,
       address,
       aadhaar,
       pan,
+      normalized_pan,
+
       voter,
       other,
       aadhaarKey,
@@ -165,23 +172,19 @@ exports.saveKyc = async (req, res) => {
   }
 };
 
-/* ===================== FETCH (PAGINATED + SEARCH) ===================== */
+/* ===================== LIST (NO SEARCH) ===================== */
 
 exports.getAllKycCustomers = async (req, res) => {
   try {
     const page = parsePage(req);
-    const search = parseSearch(req);
-
     const { items, totalCount } =
-      await kycRepo.getAllKycCustomers(page, search);
-
-    const totalPages = Math.ceil(totalCount / LIMIT);
+      await kycRepo.getAllKycCustomers(page);
 
     res.json({
       success: true,
       page,
       limit: LIMIT,
-      totalPages,
+      totalPages: Math.ceil(totalCount / LIMIT),
       customers: items,
     });
   } catch (err) {
@@ -193,69 +196,117 @@ exports.getAllKycCustomers = async (req, res) => {
 exports.getApprovedKycCustomers = async (req, res) => {
   try {
     const page = parsePage(req);
-    const search = parseSearch(req);
-
     const { items, totalCount } =
-      await kycRepo.getApprovedKycCustomers(page, search);
-
-    const totalPages = Math.ceil(totalCount / LIMIT);
+      await kycRepo.getApprovedKycCustomers(page);
 
     res.json({
       success: true,
       page,
       limit: LIMIT,
-      totalPages,
+      totalPages: Math.ceil(totalCount / LIMIT),
       customers: items,
     });
   } catch (err) {
-    console.error("Fetch Approved KYC Error:", err);
-    res.status(500).json({
-      success: false,
-      message: "Failed to fetch approved KYC customers",
-    });
+    console.error("Fetch Approved Error:", err);
+    res.status(500).json({ message: "Failed to fetch approved customers" });
   }
 };
 
 exports.getPendingKycCustomers = async (req, res) => {
   try {
     const page = parsePage(req);
-    const search = parseSearch(req);
-
     const { items, totalCount } =
-      await kycRepo.getPendingKycCustomers(page, search);
-
-    const totalPages = Math.ceil(totalCount / LIMIT);
+      await kycRepo.getPendingKycCustomers(page);
 
     res.json({
       success: true,
       page,
       limit: LIMIT,
-      totalPages,
+      totalPages: Math.ceil(totalCount / LIMIT),
       customers: items,
     });
   } catch (err) {
-    console.error("Fetch Pending KYC Error:", err);
-    res.status(500).json({
-      success: false,
-      message: "Failed to fetch pending KYC customers",
-    });
+    console.error("Fetch Pending Error:", err);
+    res.status(500).json({ message: "Failed to fetch pending customers" });
   }
 };
 
-/* ===================== APPROVE ===================== */
+/* ===================== SEARCH (TAB AWARE) ===================== */
+
+exports.searchAllKycCustomers = async (req, res) => {
+  try {
+    const page = parsePage(req);
+    const query = req.query.query;
+    if (!query) return res.status(400).json({ message: "Query required" });
+
+    const search = normalizeSearch(query);
+    const { items, totalCount } =
+      await kycRepo.searchAllKycCustomers(page, search);
+
+    res.json({
+      success: true,
+      page,
+      limit: LIMIT,
+      totalPages: Math.ceil(totalCount / LIMIT),
+      customers: items,
+    });
+  } catch (err) {
+    console.error("Search All Error:", err);
+    res.status(500).json({ message: "Search failed" });
+  }
+};
+
+exports.searchApprovedKycCustomers = async (req, res) => {
+  try {
+    const page = parsePage(req);
+    const query = req.query.query;
+    if (!query) return res.status(400).json({ message: "Query required" });
+
+    const search = normalizeSearch(query);
+    const { items, totalCount } =
+      await kycRepo.searchApprovedKycCustomers(page, search);
+
+    res.json({
+      success: true,
+      page,
+      limit: LIMIT,
+      totalPages: Math.ceil(totalCount / LIMIT),
+      customers: items,
+    });
+  } catch (err) {
+    console.error("Search Approved Error:", err);
+    res.status(500).json({ message: "Search failed" });
+  }
+};
+
+exports.searchPendingKycCustomers = async (req, res) => {
+  try {
+    const page = parsePage(req);
+    const query = req.query.query;
+    if (!query) return res.status(400).json({ message: "Query required" });
+
+    const search = normalizeSearch(query);
+    const { items, totalCount } =
+      await kycRepo.searchPendingKycCustomers(page, search);
+
+    res.json({
+      success: true,
+      page,
+      limit: LIMIT,
+      totalPages: Math.ceil(totalCount / LIMIT),
+      customers: items,
+    });
+  } catch (err) {
+    console.error("Search Pending Error:", err);
+    res.status(500).json({ message: "Search failed" });
+  }
+};
+
+/* ===================== APPROVE & DELETE ===================== */
 
 exports.approveKyc = async (req, res) => {
   try {
     const { customerId } = req.params;
-
-    const existing = await kycRepo.getKycById(customerId);
-    if (!existing) {
-      return res.status(404).json({
-        success: false,
-        message: "Customer not found",
-      });
-    }
-
     const updated = await kycRepo.approveKycCustomer(customerId);
 
     res.json({
@@ -264,39 +315,27 @@ exports.approveKyc = async (req, res) => {
       customer: updated,
     });
   } catch (err) {
-    console.error("Approve KYC Error:", err);
-    res.status(500).json({
-      success: false,
-      message: "Failed to approve KYC",
-    });
+    console.error("Approve Error:", err);
+    res.status(500).json({ message: "Failed to approve KYC" });
   }
 };
-
-/* ===================== DELETE ===================== */
 
 exports.deleteKycCustomerController = async (req, res) => {
   try {
     const { customerId } = req.params;
+    const deleted = await kycRepo.deleteKycCustomer(customerId);
 
-    const deletedCustomer = await kycRepo.deleteKycCustomer(customerId);
-
-    if (!deletedCustomer) {
-      return res.status(404).json({
-        success: false,
-        message: "Customer not found",
-      });
+    if (!deleted) {
+      return res.status(404).json({ message: "Customer not found" });
     }
 
-    res.status(200).json({
+    res.json({
       success: true,
       message: "Customer deleted successfully",
-      customer: deletedCustomer,
+      customer: deleted,
     });
-  } catch (error) {
-    console.error("Delete KYC error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to delete customer",
-    });
+  } catch (err) {
+    console.error("Delete Error:", err);
+    res.status(500).json({ message: "Failed to delete customer" });
   }
 };
