@@ -103,3 +103,20 @@ exports.getProjectFlatsController = async (req, res) => {
     });
   }
 };
+
+exports.fetchProjectIdAndName = async (req, res) => {
+  try {
+    const projects = await projectRepo.getProjectIdAndName();
+
+    return res.status(200).json({
+      success: true,
+      projects,
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch projects",
+    });
+  }
+};

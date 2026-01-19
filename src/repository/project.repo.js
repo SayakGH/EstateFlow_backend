@@ -45,3 +45,20 @@ exports.getAllProjects = async () => {
 
   return result.Items || [];
 };
+
+exports.getProjectIdAndName = async () => {
+  const result = await dynamoDB.send(
+    new ScanCommand({
+      TableName: PROJECTS_TABLE,
+      ProjectionExpression: "projectId, #n",
+      ExpressionAttributeNames: {
+        "#n": "name",
+      },
+    }),
+  );
+
+  return (result.Items || []).map((p) => ({
+    id: p.projectId,
+    name: p.name,
+  }));
+};
