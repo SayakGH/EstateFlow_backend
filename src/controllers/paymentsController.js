@@ -16,7 +16,7 @@ exports.addPaymentController = async (req, res) => {
         message: "Flat is not booked",
       });
     }
-
+    const flat = await projectFlatsRepo.getFlatById(projectId, flatId);
     // 2) Check payment limit
     const newPaid = booked.paid + amount;
 
@@ -39,7 +39,7 @@ exports.addPaymentController = async (req, res) => {
       summary,
     });
 
-    if (newPaid >= booked.totalPayment * 0.5) {
+    if (newPaid >= booked.totalPayment * 0.5 && flat.status !== "sold") {
       await projectRepo.incrementProjectSoldCount(projectId);
       await projectFlatsRepo.updateFlatStatus(projectId, flatId, "sold");
     }

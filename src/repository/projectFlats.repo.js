@@ -2,6 +2,7 @@ const {
   BatchWriteCommand,
   QueryCommand,
   UpdateCommand,
+  GetCommand,
 } = require("@aws-sdk/lib-dynamodb");
 const { dynamoDB } = require("../config/dynamo");
 
@@ -76,6 +77,19 @@ exports.getFlatsByProjectId = async (projectId) => {
   );
 
   return result.Items || [];
+};
+exports.getFlatById = async (projectId, flatId) => {
+  const result = await dynamoDB.send(
+    new GetCommand({
+      TableName: FLATS_TABLE,
+      Key: {
+        projectId,
+        flatId,
+      },
+    }),
+  );
+
+  return result.Item || null;
 };
 
 exports.updateFlatStatus = async (projectId, flatId, status) => {
