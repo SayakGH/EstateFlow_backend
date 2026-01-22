@@ -30,7 +30,7 @@ exports.bookFlatController = async (req, res) => {
 
     if (amount >= totalPayment * 0.5) {
       await projectFlatsRepo.updateFlatStatus(projectId, flatId, "sold");
-      await projectRepo.incrementProjectSoldCount(projectId);
+      await projectRepo.incrementProjectSoldCountbook(projectId);
     } else {
       await projectRepo.incrementProjectBookedCount(projectId);
     }

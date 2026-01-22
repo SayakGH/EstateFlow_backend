@@ -87,6 +87,25 @@ exports.incrementProjectSoldCount = async (projectId) => {
   return true;
 };
 
+exports.incrementProjectSoldCountbook = async (projectId) => {
+  await dynamoDB.send(
+    new UpdateCommand({
+      TableName: PROJECTS_TABLE,
+      Key: {
+        projectId,
+      },
+      UpdateExpression:
+        "SET soldApartments = soldApartments + :one, freeApartments = freeApartments - :one",
+      ExpressionAttributeValues: {
+        ":one": 1,
+      },
+      ReturnValues: "ALL_NEW",
+    }),
+  );
+
+  return true;
+};
+
 exports.incrementProjectBookedCount = async (projectId) => {
   await dynamoDB.send(
     new UpdateCommand({
