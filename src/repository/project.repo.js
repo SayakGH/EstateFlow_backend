@@ -1,4 +1,9 @@
-const { PutCommand, ScanCommand } = require("@aws-sdk/lib-dynamodb");
+const {
+  PutCommand,
+  ScanCommand,
+  UpdateCommand,
+  DeleteCommand,
+} = require("@aws-sdk/lib-dynamodb");
 const { dynamoDB } = require("../config/dynamo");
 
 const PROJECTS_TABLE = "projects";
@@ -61,4 +66,53 @@ exports.getProjectIdAndName = async () => {
     id: p.projectId,
     name: p.name,
   }));
+};
+
+exports.incrementProjectSoldCount = async (projectId) => {
+  await dynamoDB.send(
+    new UpdateCommand({
+      TableName: PROJECTS_TABLE,
+      Key: {
+        projectId,
+      },
+      UpdateExpression:
+        "SET soldApartments = soldApartments + :one, bookedApartments = bookedApartments - :one",
+      ExpressionAttributeValues: {
+        ":one": 1,
+      },
+      ReturnValues: "ALL_NEW",
+    }),
+  );
+
+  return true;
+};
+
+exports.incrementProjectBookedCount = async (projectId) => {
+  await dynamoDB.send(
+    new UpdateCommand({
+      TableName: PROJECTS_TABLE,
+      Key: {
+        projectId,
+      },
+      UpdateExpression:
+        "SET bookedApartments = bookedApartments + :one, freeApartments = freeApartments - :one",
+      ExpressionAttributeValues: {
+        ":one": 1,
+      },
+      ReturnValues: "ALL_NEW",
+    }),
+  );
+
+  return true;
+};
+
+exports.deleteProject = async (projectId) => {
+  await dynamoDB.send(
+    new DeleteCommand({
+      TableName: PROJECTS_TABLE,
+      Key: { projectId },
+    }),
+  );
+
+  return true;
 };

@@ -1,4 +1,8 @@
-const { BatchWriteCommand, QueryCommand } = require("@aws-sdk/lib-dynamodb");
+const {
+  BatchWriteCommand,
+  QueryCommand,
+  UpdateCommand,
+} = require("@aws-sdk/lib-dynamodb");
 const { dynamoDB } = require("../config/dynamo");
 
 const FLATS_TABLE = "project_flats";
@@ -72,4 +76,54 @@ exports.getFlatsByProjectId = async (projectId) => {
   );
 
   return result.Items || [];
+};
+
+exports.updateFlatStatus = async (projectId, flatId, status) => {
+  await dynamoDB.send(
+    new UpdateCommand({
+      TableName: FLATS_TABLE,
+      Key: {
+        projectId,
+        flatId,
+      },
+      UpdateExpression: "SET #st = :status",
+      ExpressionAttributeNames: {
+        "#st": "status",
+      },
+      ExpressionAttributeValues: {
+        ":status": status,
+      },
+      ReturnValues: "ALL_NEW",
+    }),
+  );
+
+  return true;
+};
+
+exports.deleteFlatsByProjectId = async (projectId) => {
+  const flats = await exports.getFlatsByProjectId(projectId);
+
+  if (!flats.length) return true;
+
+  const deleteRequests = flats.map((flat) => ({
+    DeleteRequest: {
+      Key: {
+        projectId,
+        flatId: flat.flatId,
+      },
+    },
+  }));
+
+  // DynamoDB batch limit = 25
+  for (let i = 0; i < deleteRequests.length; i += 25) {
+    await dynamoDB.send(
+      new BatchWriteCommand({
+        RequestItems: {
+          [FLATS_TABLE]: deleteRequests.slice(i, i + 25),
+        },
+      }),
+    );
+  }
+
+  return true;
 };

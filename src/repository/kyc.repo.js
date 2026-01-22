@@ -11,7 +11,7 @@ const { DeleteObjectsCommand } = require("@aws-sdk/client-s3");
 
 const TABLE_NAME = "kyc_customers";
 const BUCKET_NAME = "realestate-kyc-documents";
-const LIMIT = 2;
+const LIMIT = 10;
 
 /* ================= DUPLICATE CHECK ================= */
 
@@ -23,7 +23,7 @@ exports.checkDuplicateCustomer = async ({ phone }) => {
       ExpressionAttributeValues: {
         ":phone": phone,
       },
-    })
+    }),
   );
 
   return result.Items && result.Items.length > 0;
@@ -61,7 +61,7 @@ exports.createKyc = async (payload) => {
     new PutCommand({
       TableName: TABLE_NAME,
       Item: item,
-    })
+    }),
   );
 
   return item;
@@ -145,12 +145,14 @@ const paginatedScan = async ({
       new ScanCommand({
         TableName: TABLE_NAME,
         FilterExpression: finalFilterExpression,
-        ExpressionAttributeNames:
-          Object.keys(finalNames).length ? finalNames : undefined,
-        ExpressionAttributeValues:
-          Object.keys(finalValues).length ? finalValues : undefined,
+        ExpressionAttributeNames: Object.keys(finalNames).length
+          ? finalNames
+          : undefined,
+        ExpressionAttributeValues: Object.keys(finalValues).length
+          ? finalValues
+          : undefined,
         ExclusiveStartKey: lastKey,
-      })
+      }),
     );
 
     for (const item of res.Items || []) {
@@ -224,7 +226,7 @@ exports.getKycById = async (customerId) => {
     new GetCommand({
       TableName: TABLE_NAME,
       Key: { _id: customerId },
-    })
+    }),
   );
 
   return res.Item || null;
@@ -239,7 +241,7 @@ exports.approveKycCustomer = async (customerId) => {
       ExpressionAttributeNames: { "#status": "status" },
       ExpressionAttributeValues: { ":status": "approved" },
       ReturnValues: "ALL_NEW",
-    })
+    }),
   );
 
   return result.Attributes;
@@ -250,7 +252,7 @@ exports.deleteKycCustomer = async (customerId) => {
     new GetCommand({
       TableName: TABLE_NAME,
       Key: { _id: customerId },
-    })
+    }),
   );
 
   const customer = getRes.Item;
@@ -270,7 +272,7 @@ exports.deleteKycCustomer = async (customerId) => {
       new DeleteObjectsCommand({
         Bucket: BUCKET_NAME,
         Delete: { Objects: s3Keys, Quiet: true },
-      })
+      }),
     );
   }
 
@@ -278,7 +280,7 @@ exports.deleteKycCustomer = async (customerId) => {
     new DeleteCommand({
       TableName: TABLE_NAME,
       Key: { _id: customerId },
-    })
+    }),
   );
 
   return customer;

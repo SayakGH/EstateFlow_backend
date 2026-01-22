@@ -6,12 +6,11 @@ const kycRepo = require("../repository/kyc.repo");
 
 const BUCKET = "realestate-kyc-documents";
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/jpg"];
-const LIMIT = 2;
+const LIMIT = 10;
 
 /* ===================== HELPERS ===================== */
 
-const parsePage = (req) =>
-  Math.max(parseInt(req.query.page, 10) || 1, 1);
+const parsePage = (req) => Math.max(parseInt(req.query.page, 10) || 1, 1);
 
 /**
  * Normalize search input based on intent
@@ -177,8 +176,7 @@ exports.saveKyc = async (req, res) => {
 exports.getAllKycCustomers = async (req, res) => {
   try {
     const page = parsePage(req);
-    const { items, totalCount } =
-      await kycRepo.getAllKycCustomers(page);
+    const { items, totalCount } = await kycRepo.getAllKycCustomers(page);
 
     res.json({
       success: true,
@@ -196,8 +194,7 @@ exports.getAllKycCustomers = async (req, res) => {
 exports.getApprovedKycCustomers = async (req, res) => {
   try {
     const page = parsePage(req);
-    const { items, totalCount } =
-      await kycRepo.getApprovedKycCustomers(page);
+    const { items, totalCount } = await kycRepo.getApprovedKycCustomers(page);
 
     res.json({
       success: true,
@@ -215,8 +212,7 @@ exports.getApprovedKycCustomers = async (req, res) => {
 exports.getPendingKycCustomers = async (req, res) => {
   try {
     const page = parsePage(req);
-    const { items, totalCount } =
-      await kycRepo.getPendingKycCustomers(page);
+    const { items, totalCount } = await kycRepo.getPendingKycCustomers(page);
 
     res.json({
       success: true,
@@ -240,8 +236,10 @@ exports.searchAllKycCustomers = async (req, res) => {
     if (!query) return res.status(400).json({ message: "Query required" });
 
     const search = normalizeSearch(query);
-    const { items, totalCount } =
-      await kycRepo.searchAllKycCustomers(page, search);
+    const { items, totalCount } = await kycRepo.searchAllKycCustomers(
+      page,
+      search,
+    );
 
     res.json({
       success: true,
@@ -263,8 +261,10 @@ exports.searchApprovedKycCustomers = async (req, res) => {
     if (!query) return res.status(400).json({ message: "Query required" });
 
     const search = normalizeSearch(query);
-    const { items, totalCount } =
-      await kycRepo.searchApprovedKycCustomers(page, search);
+    const { items, totalCount } = await kycRepo.searchApprovedKycCustomers(
+      page,
+      search,
+    );
 
     res.json({
       success: true,
@@ -286,8 +286,10 @@ exports.searchPendingKycCustomers = async (req, res) => {
     if (!query) return res.status(400).json({ message: "Query required" });
 
     const search = normalizeSearch(query);
-    const { items, totalCount } =
-      await kycRepo.searchPendingKycCustomers(page, search);
+    const { items, totalCount } = await kycRepo.searchPendingKycCustomers(
+      page,
+      search,
+    );
 
     res.json({
       success: true,

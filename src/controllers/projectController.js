@@ -120,3 +120,64 @@ exports.fetchProjectIdAndName = async (req, res) => {
     });
   }
 };
+
+exports.approveLoanController = async (req, res) => {
+  try {
+    const { projectId, flatId } = req.params;
+
+    if (!projectId || !flatId) {
+      return res.status(400).json({
+        success: false,
+        message: "projectId and flatId are required",
+      });
+    }
+
+    // 1️⃣ Mark flat as sold
+    await projectFlatsRepo.updateFlatStatus(projectId, flatId, "sold");
+
+    // 2️⃣ Increment project stats
+    await projectRepo.incrementProjectSoldCount(projectId);
+
+    return res.status(200).json({
+      success: true,
+      message: "Loan approved, flat sold, project stats updated",
+    });
+  } catch (error) {
+    console.error("Approve loan error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to approve loan",
+    });
+  }
+};
+
+exports.deleteProjectController = async (req, res) => {
+  try {
+    const { projectId } = req.params;
+
+    if (!projectId) {
+      return res.status(400).json({
+        success: false,
+        message: "Project ID is required",
+      });
+    }
+
+    // Delete flats first
+    await projectFlatsRepo.deleteFlatsByProjectId(projectId);
+
+    // Delete project itself
+    await projectRepo.deleteProject(projectId);
+
+    return res.status(200).json({
+      success: true,
+      message: "Project and apartments deleted successfully",
+    });
+  } catch (error) {
+    console.error("Delete project error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to delete project",
+    });
+  }
+};
