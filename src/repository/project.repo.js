@@ -3,6 +3,7 @@ const {
   ScanCommand,
   UpdateCommand,
   DeleteCommand,
+  GetCommand,
 } = require("@aws-sdk/lib-dynamodb");
 const { dynamoDB } = require("../config/dynamo");
 
@@ -134,4 +135,19 @@ exports.deleteProject = async (projectId) => {
   );
 
   return true;
+};
+
+exports.getProjectNameById = async (projectId) => {
+  const result = await dynamoDB.send(
+    new GetCommand({
+      TableName: PROJECTS_TABLE,
+      Key: { projectId },
+      ProjectionExpression: "#n",
+      ExpressionAttributeNames: {
+        "#n": "name",
+      },
+    }),
+  );
+
+  return result.Item?.name || null;
 };

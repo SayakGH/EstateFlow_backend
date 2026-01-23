@@ -3,6 +3,7 @@ const {
   PutCommand,
   QueryCommand,
   GetCommand,
+  ScanCommand,
 } = require("@aws-sdk/lib-dynamodb");
 
 const { dynamoDB } = require("../config/dynamo");
@@ -11,6 +12,7 @@ const PAYMENTS_TABLE = "flat_payments";
 /* ================= ADD PAYMENT ================= */
 exports.addPayment = async ({
   projectId,
+  projectName,
   flatId,
   customer,
   amount,
@@ -25,8 +27,8 @@ exports.addPayment = async ({
       Item: {
         paymentId, // ✅ PK
         projectFlatKey: `${projectId}#${flatId}`, // ✅ For GSI queries
-        timestamp, // ✅ For sorting in GSI
         projectId,
+        projectName,
         flatId,
         customer,
         amount,
@@ -65,4 +67,30 @@ exports.getPaymentsByFlat = async (projectId, flatId) => {
   );
 
   return result.Items || [];
+};
+
+exports.getAllPayments = async () => {
+  let payments = [];
+  let lastKey = undefined; // ✅ must be undefined, NOT null
+
+  do {
+    const params = {
+      TableName: PAYMENTS_TABLE,
+    };
+
+    // Only attach ExclusiveStartKey if it exists
+    if (lastKey) {
+      params.ExclusiveStartKey = lastKey;
+    }
+
+    const result = await dynamoDB.send(new ScanCommand(params));
+
+    payments = payments.concat(result.Items || []);
+    lastKey = result.LastEvaluatedKey;
+  } while (lastKey);
+
+  // Sort newest first using correct field
+  payments.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+  return payments;
 };

@@ -35,9 +35,11 @@ exports.bookFlatController = async (req, res) => {
       await projectRepo.incrementProjectBookedCount(projectId);
     }
 
+    const projectName = await projectRepo.getProjectNameById(projectId);
     // 3) Create payment record
     await flatPaymentsRepo.addPayment({
       projectId,
+      projectName,
       flatId,
       customer,
       amount,

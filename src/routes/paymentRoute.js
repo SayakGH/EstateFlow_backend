@@ -5,6 +5,7 @@ const auth = require("../middleware/authMiddleware");
 const {
   addPaymentController,
   getFlatPaymentHistoryController,
+  getAllPayments,
 } = require("../controllers/paymentsController");
 
 // API 3 — Add payment to booked flat
@@ -15,5 +16,6 @@ router.get(
   auth,
   getFlatPaymentHistoryController,
 );
+router.get("/all", auth, getAllPayments);
 
 module.exports = router;

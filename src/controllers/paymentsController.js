@@ -30,9 +30,12 @@ exports.addPaymentController = async (req, res) => {
     // 3) Update paid amount
     await bookedFlatsRepo.incrementPaidAmount(projectId, flatId, amount);
 
+    const projectName = await projectRepo.getProjectNameById(projectId);
+
     // 4) Add payment record
     await flatPaymentsRepo.addPayment({
       projectId,
+      projectName,
       flatId,
       customer: { id: booked.customer_id, name: booked.customer_name },
       amount,
@@ -81,6 +84,25 @@ exports.getFlatPaymentHistoryController = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Failed to fetch payment history",
+    });
+  }
+};
+
+exports.getAllPayments = async (req, res) => {
+  try {
+    const payments = await flatPaymentsRepo.getAllPayments();
+
+    return res.status(200).json({
+      success: true,
+      count: payments.length,
+      payments,
+    });
+  } catch (error) {
+    console.error("Get all payments error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch payments",
     });
   }
 };
