@@ -6,16 +6,38 @@ const {
   addPaymentController,
   getFlatPaymentHistoryController,
   getAllPayments,
+  searchPaymentsController, // ✅ NEW IMPORT
 } = require("../controllers/paymentsController");
 
-// API 3 — Add payment to booked flat
-router.post("/flats/:projectId/:flatId/pay", auth, addPaymentController);
+// ================= PAYMENTS ROUTES =================
 
+// ✅ Add payment to booked flat
+router.post(
+  "/flats/:projectId/:flatId/pay",
+  auth,
+  addPaymentController
+);
+
+// ✅ Get payment history for a specific flat
 router.get(
   "/:projectId/:flatId/history",
   auth,
-  getFlatPaymentHistoryController,
+  getFlatPaymentHistoryController
 );
-router.get("/all", auth, getAllPayments);
+
+// ✅ Get ALL payments with Pagination
+router.get(
+  "/all",
+  auth,
+  getAllPayments
+);
+
+// ✅ SEARCH payments (Paginated)
+// Example: GET /payments/search?q=rahul&page=1
+router.get(
+  "/search",
+  auth,
+  searchPaymentsController
+);
 
 module.exports = router;

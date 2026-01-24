@@ -2,6 +2,8 @@ const bookedFlatsRepo = require("../repository/bookings.repo");
 const flatPaymentsRepo = require("../repository/payments.repo");
 const projectRepo = require("../repository/project.repo");
 const projectFlatsRepo = require("../repository/projectFlats.repo");
+
+/* ================= ADD PAYMENT ================= */
 exports.addPaymentController = async (req, res) => {
   try {
     const { projectId, flatId } = req.params;
@@ -16,7 +18,9 @@ exports.addPaymentController = async (req, res) => {
         message: "Flat is not booked",
       });
     }
+
     const flat = await projectFlatsRepo.getFlatById(projectId, flatId);
+
     // 2) Check payment limit
     const newPaid = booked.paid + amount;
 
@@ -30,9 +34,10 @@ exports.addPaymentController = async (req, res) => {
     // 3) Update paid amount
     await bookedFlatsRepo.incrementPaidAmount(projectId, flatId, amount);
 
+    // 4) Fetch project name
     const projectName = await projectRepo.getProjectNameById(projectId);
 
-    // 4) Add payment record
+    // 5) Add payment record
     await flatPaymentsRepo.addPayment({
       projectId,
       projectName,
@@ -42,22 +47,28 @@ exports.addPaymentController = async (req, res) => {
       summary,
     });
 
+    // 6) Mark flat sold if 50% paid
     if (newPaid >= booked.totalPayment * 0.5 && flat.status !== "sold") {
       await projectRepo.incrementProjectSoldCount(projectId);
       await projectFlatsRepo.updateFlatStatus(projectId, flatId, "sold");
     }
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       message: "Payment added",
       paid: newPaid,
     });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, message: "Payment failed" });
+    console.error("Add payment error:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: "Payment failed",
+    });
   }
 };
 
+/* ================= GET PAYMENTS BY FLAT ================= */
 exports.getFlatPaymentHistoryController = async (req, res) => {
   try {
     const { projectId, flatId } = req.params;
@@ -71,7 +82,7 @@ exports.getFlatPaymentHistoryController = async (req, res) => {
 
     const payments = await flatPaymentsRepo.getPaymentsByFlat(
       projectId,
-      flatId,
+      flatId
     );
 
     return res.status(200).json({
@@ -81,6 +92,7 @@ exports.getFlatPaymentHistoryController = async (req, res) => {
     });
   } catch (error) {
     console.error("Get payment history error:", error);
+
     return res.status(500).json({
       success: false,
       message: "Failed to fetch payment history",
@@ -88,14 +100,28 @@ exports.getFlatPaymentHistoryController = async (req, res) => {
   }
 };
 
+/* ================= GET ALL PAYMENTS (PAGINATED) ================= */
 exports.getAllPayments = async (req, res) => {
   try {
-    const payments = await flatPaymentsRepo.getAllPayments();
+    // ✅ Read page from query (?page=1)
+    let page = parseInt(req.query.page || "1", 10);
+
+    // ✅ Prevent invalid page numbers
+    if (isNaN(page) || page < 1) {
+      page = 1;
+    }
+
+    // ✅ Paginated repo call
+    const result = await flatPaymentsRepo.getAllPayments(page);
 
     return res.status(200).json({
       success: true,
-      count: payments.length,
-      payments,
+
+      payments: result.payments,
+
+      totalCount: result.totalCount,
+      totalPages: result.totalPages,
+      currentPage: result.currentPage,
     });
   } catch (error) {
     console.error("Get all payments error:", error);
@@ -103,6 +129,58 @@ exports.getAllPayments = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Failed to fetch payments",
+    });
+  }
+};
+
+/* ================= SEARCH PAYMENTS (PAGINATED) ================= */
+/**
+ * Search by:
+ * - paymentId
+ * - customer name
+ * - projectName
+ * - projectId
+ * - flatId
+ *
+ * Example:
+ * GET /payments/search?q=rahul&page=1
+ */
+exports.searchPaymentsController = async (req, res) => {
+  try {
+    const query = req.query.q;
+    let page = parseInt(req.query.page || "1", 10);
+
+    // ✅ Validate query
+    if (!query || query.trim() === "") {
+      return res.status(400).json({
+        success: false,
+        message: "Search query is required",
+      });
+    }
+
+    // ✅ Validate page
+    if (isNaN(page) || page < 1) {
+      page = 1;
+    }
+
+    // ✅ Call repo search function
+    const result = await flatPaymentsRepo.searchPayments(query, page);
+
+    return res.status(200).json({
+      success: true,
+
+      payments: result.payments,
+
+      totalCount: result.totalCount,
+      totalPages: result.totalPages,
+      currentPage: result.currentPage,
+    });
+  } catch (error) {
+    console.error("Search payments error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to search payments",
     });
   }
 };
