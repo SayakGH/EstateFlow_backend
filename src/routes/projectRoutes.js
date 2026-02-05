@@ -6,11 +6,13 @@ const {
   fetchProjectIdAndName,
   approveLoanController,
   deleteProjectController,
+  getFlatById,
 } = require("../controllers/projectController");
 const auth = require("../middleware/authMiddleware");
 
 const router = express.Router();
 
+router.get("/:projectId/flats/:flatId", getFlatById);
 router.post("/", auth, createProjectController);
 router.get("/", auth, getAllProjectsController);
 router.get("/flats/:projectId", auth, getProjectFlatsController);
