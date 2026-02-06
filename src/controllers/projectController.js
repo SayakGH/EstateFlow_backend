@@ -1,73 +1,127 @@
-const invoiceRepo = require("../repository/invoice.repo");
-const flatsRepo = require("../repository/projectFlats.repo");
+const { randomUUID } = require("crypto");
+const projectRepo = require("../repository/project.repo");
+const projectFlatsRepo = require("../repository/projectFlats.repo");
 
-exports.attachInvoiceToFlat = async (req, res) => {
+/**
+ * POST /api/projects
+ * Body:
+ * {
+ *   name: string,
+ *   flats: Flat[]
+ * }
+ */
+exports.createProjectController = async (req, res) => {
   try {
-    const { invoiceId, projectId, flatId } = req.body;
+    const { name, flats } = req.body;
 
-    if (!invoiceId || !projectId || !flatId) {
+    // 1️⃣ Basic validation
+    if (!name || !Array.isArray(flats) || flats.length === 0) {
       return res.status(400).json({
         success: false,
-        message: "invoiceId, projectId and flatId are required",
+        message: "Project name and flats are required",
       });
     }
 
-    // 1️⃣ Get latest invoice
-    const latestInvoice = await invoiceRepo.getLatestInvoiceByAnyId(invoiceId);
+    // 2️⃣ Generate projectId (slug or UUID)
+    const projectId =
+      name.toLowerCase().replace(/\s+/g, "-") + "-" + randomUUID().slice(0, 6);
 
-    if (!latestInvoice) {
-      return res.status(404).json({ message: "Invoice not found" });
-    }
+    const stats = projectFlatsRepo.buildProjectStats(flats);
 
-    // 2️⃣ Get root invoice
-    const rootInvoice = await invoiceRepo.getRootInvoiceByAnyId(invoiceId);
-
-    // 3️⃣ Extract financial values
-    const totalAmount = Number(latestInvoice.totalAmount || 0);
-    const advance = Number(latestInvoice.advance || 0);
-
-    if (totalAmount <= 0) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid totalAmount in invoice",
-      });
-    }
-
-    // 4️⃣ Decide flat status
-    const isSold = advance >= totalAmount * 0.5;
-    const status = isSold ? "sold" : "booked";
-
-    // 5️⃣ Attach invoice + update status
-    await flatsRepo.attachInvoiceAndUpdateStatus(
+    const project = await projectRepo.createProject({
       projectId,
-      flatId,
-      latestInvoice._id,
-      rootInvoice._id,
-      status,
-    );
-
-    return res.status(200).json({
-      success: true,
-      message: "Invoice linked and flat status updated",
-      flatStatus: status,
-      latestInvoiceId: latestInvoice._id,
-      rootInvoiceId: rootInvoice._id,
-      financials: {
-        totalAmount,
-        advance,
-        paidPercentage: ((advance / totalAmount) * 100).toFixed(2) + "%",
-      },
+      name,
+      totalApartments: stats.totalApartments,
+      totalBlocks: stats.totalBlocks,
+      soldApartments: stats.soldApartments,
+      freeApartments: stats.freeApartments,
+      bookedApartments: stats.bookedApartments,
     });
-  } catch (err) {
-    console.error("Attach Invoice Error:", err);
+
+    // 5️⃣ Insert flats into separate table
+    await projectFlatsRepo.createProjectFlats(projectId, flats);
+
+    return res.status(201).json({
+      success: true,
+      message: "Project created successfully",
+      project,
+    });
+  } catch (error) {
+    console.error("Create project error:", error);
+
     return res.status(500).json({
       success: false,
-      message: err.message,
+      message: "Failed to create project",
     });
   }
 };
 
-exports.getFlatCustomerInvoiceDetails = async (req, res) => {
+exports.getAllProjectsController = async (req, res) => {
+  try {
+    const projects = await projectRepo.getAllProjects();
+
+    return res.status(200).json({
+      success: true,
+      projects,
+    });
+  } catch (error) {
+    console.error("Get projects error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch projects",
+    });
+  }
+};
+
+/**
+ * GET /api/projects/:projectId/flats
+ */
+exports.getProjectFlatsController = async (req, res) => {
+  try {
+    const { projectId } = req.params;
+
+    if (!projectId) {
+      return res.status(400).json({
+        success: false,
+        message: "Project ID is required",
+      });
+    }
+
+    const flats = await projectFlatsRepo.getFlatsByProjectId(projectId);
+
+    return res.status(200).json({
+      success: true,
+      flats,
+    });
+  } catch (error) {
+    console.error("Get project flats error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch project flats",
+    });
+  }
+};
+
+exports.fetchProjectIdAndName = async (req, res) => {
+  try {
+    const projects = await projectRepo.getProjectIdAndName();
+
+    return res.status(200).json({
+      success: true,
+      projects,
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch projects",
+    });
+  }
+};
+
+exports.approveLoanController = async (req, res) => {
   try {
     const { projectId, flatId } = req.params;
 
@@ -78,157 +132,79 @@ exports.getFlatCustomerInvoiceDetails = async (req, res) => {
       });
     }
 
-    // 1️⃣ Get flat → latestInvoiceId
-    const flat = await flatsRepo.getFlatInvoiceDetails(projectId, flatId);
+    // 1️⃣ Mark flat as sold
+    await projectFlatsRepo.updateFlatStatus(projectId, flatId, "sold");
 
-    if (!flat || !flat.latestInvoiceId) {
-      return res.status(404).json({
-        success: false,
-        message: "No invoice linked to this flat",
-      });
-    }
-
-    // 2️⃣ Get invoice summary
-    const invoice = await invoiceRepo.getInvoiceCustomerSummary(
-      flat.latestInvoiceId,
-    );
-
-    if (!invoice) {
-      return res.status(404).json({
-        success: false,
-        message: "Invoice not found",
-      });
-    }
+    // 2️⃣ Increment project stats  approveLoanForFlat
+    await projectFlatsRepo.approveLoanForFlat(projectId, flatId);
 
     return res.status(200).json({
       success: true,
-      data: {
-        customerName: invoice.customer?.name || null,
-        pan: invoice.customer?.PAN || null,
-        totalAmount: invoice.totalAmount || 0,
-        advance: invoice.advance || 0,
-      },
+      message: "Loan approved, flat sold, project stats updated",
     });
-  } catch (err) {
-    console.error("Get Flat Invoice Details Error:", err);
+  } catch (error) {
+    console.error("Approve loan error:", error);
     return res.status(500).json({
       success: false,
-      message: err.message,
+      message: "Failed to approve loan",
     });
   }
 };
-exports.swapLatestInvoice = async (req, res) => {
-  try {
-    const { currentLatestInvoiceId, newLatestInvoiceId } = req.body;
 
-    if (!currentLatestInvoiceId) {
+exports.deleteProjectController = async (req, res) => {
+  try {
+    const { projectId } = req.params;
+
+    if (!projectId) {
       return res.status(400).json({
         success: false,
-        message: "currentLatestInvoiceId is required",
+        message: "Project ID is required",
       });
     }
 
-    /**
-     * 🔁 CASE 1: Detach invoice (make flat FREE)
-     */
-    if (newLatestInvoiceId === null) {
-      await flatsRepo.detachInvoiceByCurrentInvoiceId(currentLatestInvoiceId);
+    // Delete flats first
+    await projectFlatsRepo.deleteFlatsByProjectId(projectId);
 
-      return res.status(200).json({
-        success: true,
-        message: "Invoice detached and flat marked as free",
-        flatStatus: "free",
-        latestInvoiceId: null,
-        rootInvoiceId: null,
-      });
-    }
-
-    /**
-     * 🔁 CASE 2: Swap to a NEW invoice
-     */
-    const newInvoice = await invoiceRepo.getInvoiceById(newLatestInvoiceId);
-
-    if (!newInvoice) {
-      return res.status(404).json({
-        success: false,
-        message: "New latest invoice not found",
-      });
-    }
-
-    const totalAmount = Number(newInvoice.totalAmount || 0);
-    const advance = Number(newInvoice.advance || 0);
-
-    const isSold = advance >= totalAmount * 0.5;
-    let status = isSold ? "sold" : "booked";
-
-    const check = await flatsRepo.getLoanApprovalStatus(currentLatestInvoiceId);
-
-    if (check) {
-      status = "sold";
-    }
-    await flatsRepo.updateLatestInvoiceByCurrentInvoiceId(
-      currentLatestInvoiceId,
-      newLatestInvoiceId,
-      status,
-    );
+    // Delete project itself
+    await projectRepo.deleteProject(projectId);
 
     return res.status(200).json({
       success: true,
-      message: "Latest invoice and flat status updated successfully",
-      flatStatus: status,
-      latestInvoiceId: newLatestInvoiceId,
+      message: "Project and apartments deleted successfully",
     });
-  } catch (err) {
-    if (err.name === "ConditionalCheckFailedException") {
-      return res.status(409).json({
-        success: false,
-        message: "Latest invoice mismatch. Update rejected.",
-      });
-    }
+  } catch (error) {
+    console.error("Delete project error:", error);
 
-    if (err.message === "No flat found for currentLatestInvoiceId") {
-      return res.status(200).json({
-        success: true,
-        message: "No flat linked to current latest invoice",
-      });
-    }
-
-    console.error("Swap Latest Invoice Error:", err);
     return res.status(500).json({
       success: false,
-      message: err.message,
+      message: "Failed to delete project",
     });
   }
 };
 
-exports.deleteFlatInvoiceLink = async (req, res) => {
+exports.getFlatById = async (req, res) => {
   try {
-    const { projectId, flatId } = req.body;
+    const { projectId, flatId } = req.params;
 
     if (!projectId || !flatId) {
       return res.status(400).json({
-        success: false,
         message: "projectId and flatId are required",
       });
     }
 
-    const updatedFlat = await flatsRepo.resetFlatToFree(projectId, flatId);
+    const flat = await projectFlatsRepo.getFlatById(projectId, flatId);
 
-    return res.status(200).json({
-      success: true,
-      message: "Flat reset to FREE successfully",
-      flat: {
-        projectId: updatedFlat.projectId,
-        flatId: updatedFlat.flatId,
-        status: updatedFlat.status,
-      },
-    });
-  } catch (err) {
-    console.error("Reset Flat Error:", err);
+    if (!flat) {
+      return res.status(404).json({
+        message: "Flat not found",
+      });
+    }
 
+    return res.status(200).json(flat);
+  } catch (error) {
+    console.error("Get flat error:", error);
     return res.status(500).json({
-      success: false,
-      message: err.message,
+      message: "Failed to fetch flat",
     });
   }
 };
