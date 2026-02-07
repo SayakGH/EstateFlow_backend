@@ -3,12 +3,10 @@ const { dynamoDB } = require("../config/dynamo");
 
 const TABLE_NAME = "kyc_customers";
 
-/* ================= CORE COUNT SCAN ================= */
+/* ============================================================= */
+/* ================= CORE COUNT SCAN (CUSTOMERS) =============== */
+/* ============================================================= */
 
-/**
- * Generic count utility using DynamoDB Scan
- * (DynamoDB has no native COUNT query without scan)
- */
 const countScan = async ({
   filterExpression,
   expressionAttributeNames,
@@ -36,18 +34,14 @@ const countScan = async ({
   return totalCount;
 };
 
-/* ================= ANALYTICS COUNTS ================= */
+/* ============================================================= */
+/* ================= ANALYTICS COUNTS (CUSTOMERS) ============== */
+/* ============================================================= */
 
-/**
- * 1️⃣ Total customers
- */
 exports.countAllCustomers = async () => {
   return countScan({});
 };
 
-/**
- * 2️⃣ Approved customers
- */
 exports.countApprovedCustomers = async () => {
   return countScan({
     filterExpression: "#status = :status",
@@ -56,13 +50,92 @@ exports.countApprovedCustomers = async () => {
   });
 };
 
-/**
- * 3️⃣ Pending customers
- */
 exports.countPendingCustomers = async () => {
   return countScan({
     filterExpression: "#status = :status",
     expressionAttributeNames: { "#status": "status" },
     expressionAttributeValues: { ":status": "pending" },
   });
+};
+
+/* ============================================================= */
+/* ================= SALES SUMMARY (MANUAL COUNT) ============== */
+/* ============================================================= */
+
+const projectRepo = require("../repository/project.repo");
+const projectFlatsRepo = require("../repository/projectFlats.repo");
+
+exports.getSalesSummary = async () => {
+  const projects = await projectRepo.getAllProjects();
+
+  const totalProjects = projects.length;
+
+  let totalApartments = 0;
+  let freeApartments = 0;
+  let bookedApartments = 0;
+  let soldApartments = 0;
+
+  const flatsPerProject = await Promise.all(
+    projects.map((project) =>
+      projectFlatsRepo.getFlatsByProjectId(project.projectId),
+    ),
+  );
+
+  flatsPerProject.forEach((flats) => {
+    totalApartments += flats.length;
+
+    flats.forEach((flat) => {
+      if (flat.status === "free") freeApartments++;
+      else if (flat.status === "booked") bookedApartments++;
+      else if (flat.status === "sold") soldApartments++;
+    });
+  });
+
+  return {
+    totalProjects,
+    totalApartments,
+    freeApartments,
+    bookedApartments,
+    soldApartments,
+  };
+};
+
+/* ============================================================= */
+/* ================= PROJECT LIST (DROPDOWN) =================== */
+/* ============================================================= */
+
+/**
+ * Get all project IDs and names
+ */
+exports.getProjectList = async () => {
+  return projectRepo.getProjectIdAndName();
+};
+
+/* ============================================================= */
+/* ============ PROJECT-WISE FLAT STATUS SUMMARY =============== */
+/* ============================================================= */
+
+/**
+ * Get flat summary for a specific project
+ */
+exports.getProjectFlatSummary = async (projectId) => {
+  const flats = await projectFlatsRepo.getFlatsByProjectId(projectId);
+
+  let totalApartments = flats.length;
+  let freeApartments = 0;
+  let bookedApartments = 0;
+  let soldApartments = 0;
+
+  flats.forEach((flat) => {
+    if (flat.status === "free") freeApartments++;
+    else if (flat.status === "booked") bookedApartments++;
+    else if (flat.status === "sold") soldApartments++;
+  });
+
+  return {
+    totalApartments,
+    freeApartments,
+    bookedApartments,
+    soldApartments,
+  };
 };

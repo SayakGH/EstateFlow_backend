@@ -4,18 +4,51 @@ const auth = require("../middleware/authMiddleware");
 
 const {
   getCustomerAnalytics,
+  getSalesAnalytics,
+  getAnalyticsProjectList,
+  getProjectSalesSummary,
 } = require("../controllers/analyticsController");
 
-/* ================= ANALYTICS COUNTS ================= */
+/* ============================================================= */
+/* ================= CUSTOMER ANALYTICS ======================== */
+/* ============================================================= */
 
 /**
  * GET /api/v1/analytics/countCustomers
- *
- * Returns:
- * - totalCustomers
- * - approvedCustomers
- * - pendingCustomers
  */
 router.get("/countCustomers", auth, getCustomerAnalytics);
+
+/* ============================================================= */
+/* ================= SALES SUMMARY ============================= */
+/* ============================================================= */
+
+/**
+ * GET /api/v1/analytics/salesSummary
+ */
+router.get("/salesSummary", auth, getSalesAnalytics);
+
+/* ============================================================= */
+/* ================= PROJECT DROPDOWN LIST ===================== */
+/* ============================================================= */
+
+/**
+ * GET /api/v1/analytics/projects
+ * Returns: [{ id, name }]
+ */
+router.get("/projects", auth, getAnalyticsProjectList);
+
+/* ============================================================= */
+/* ================= PROJECT-WISE SALES ======================== */
+/* ============================================================= */
+
+/**
+ * GET /api/v1/analytics/project/:projectId
+ * Returns:
+ * - totalApartments
+ * - freeApartments
+ * - bookedApartments
+ * - soldApartments
+ */
+router.get("/project/:projectId", auth, getProjectSalesSummary);
 
 module.exports = router;
