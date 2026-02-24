@@ -12,6 +12,17 @@ const analyticsRoutes = require("./routes/analyticsRoutes"); // ✅ ADD THIS
 
 const app = express();
 
+
+// CORS FIX
+// app.use(
+//   cors({
+//     origin: "*",
+//     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+//     allowedHeaders: ["Content-Type", "Authorization"],
+//   }),
+// );
+
+
 /* ======================
    CORS CONFIG
 ====================== */
